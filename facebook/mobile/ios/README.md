@@ -25,7 +25,7 @@ As of version 3.5.30, the only implemented API is authorization, logout, and ass
 
 *	`appid` - parameter unused. However, per the SDK docs, the app ID needs to be added in an additional key in plist.info (or tiapp.xml).
 	In addition to the required `<property name="ti.facebook.appid">FACEBOOK_APP_ID</property>`, we also need to add the following:
-	`<key>FacebookAppID</key> <string>165766840272468</string>` - you can add this in the ios plist dictionary in tiapp.xml
+	`<key>FacebookAppID</key> <string>FACEBOOK_APP_ID</string>` - you can add this in the ios plist dictionary in tiapp.xml
 *	`forceDialogAuth` - parameter unused.
 *	The rest of the parameters work as in the original module. `BUTTON_STYLE_NORMAL` and `BUTTON_STYLE_WIDE` untested at this point.
 *	The `reauthorize`, `dialog` and `requestWithGraphPath` methods are not yet implemented.
