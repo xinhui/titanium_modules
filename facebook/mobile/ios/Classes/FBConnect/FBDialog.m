@@ -1,5 +1,5 @@
 /*
- * Copyright 2010 Facebook
+ * Copyright 2010-present Facebook.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -14,13 +14,10 @@
  * limitations under the License.
  */
 
-
 #import "FBDialog.h"
-#import "FBSBJSON.h"
 #import "Facebook.h"
 #import "FBFrictionlessRequestSettings.h"
 #import "FBUtility.h"
-#import "TiApp.h"
 
 ///////////////////////////////////////////////////////////////////////////////////////////////////
 // global
@@ -46,7 +43,9 @@ static BOOL FBIsDeviceIPad() {
 
 ///////////////////////////////////////////////////////////////////////////////////////////////////
 
-@implementation FBDialog
+@implementation FBDialog {
+    BOOL _everShown;
+}
 
 @synthesize delegate = _delegate,
 params   = _params;
@@ -256,21 +255,22 @@ params   = _params;
     [self removeObservers];
     [self removeFromSuperview];
     [_modalBackgroundView removeFromSuperview];
+    
+    // this method call could cause a self-cleanup, and needs to really happen "last"
+    // If the dialog has been closed, then we need to cancel the order to open it.
+    // This happens in the case of a frictionless request, see webViewDidFinishLoad for details
+    [NSObject cancelPreviousPerformRequestsWithTarget:self
+                                             selector:@selector(showWebView)
+                                               object:nil];
 }
 
 - (void)dismiss:(BOOL)animated {
     [self dialogWillDisappear];
 
-    // If the dialog has been closed, then we need to cancel the order to open it.	
-    // This happens in the case of a frictionless request, see webViewDidFinishLoad for details	
-    [NSObject cancelPreviousPerformRequestsWithTarget:self 
-                                             selector:@selector(showWebView)
-                                               object:nil];
-
     [_loadingURL release];
     _loadingURL = nil;
     
-    if (animated) {
+    if (animated && _everShown) {
         [UIView beginAnimations:nil context:nil];
         [UIView setAnimationDuration:kTransitionDuration];
         [UIView setAnimationDelegate:self];
@@ -298,11 +298,8 @@ params   = _params;
                                               needle:@"frictionless_recipients="];
     if (recipientJson) {
         // if value parses as an array, treat as set of fbids
-        FBSBJsonParser *parser = [[[FBSBJsonParser alloc]
-                                 init]
-                                autorelease];
-        id recipients = [parser objectWithString:recipientJson];
-
+        id recipients = [FBUtility simpleJSONDecode:recipientJson];
+        
         // if we got something usable, copy the ids out and update the cache
         if ([recipients isKindOfClass:[NSArray class]]) { 
             NSMutableArray *ids = [[[NSMutableArray alloc]
@@ -326,8 +323,8 @@ params   = _params;
     if ((self = [super initWithFrame:CGRectZero])) {
         _delegate = nil;
         _loadingURL = nil;
-		_orientation = UIDeviceOrientationUnknown;
         _showingKeyboard = NO;
+        _everShown = NO;
         
         self.backgroundColor = [UIColor clearColor];
         self.autoresizesSubviews = YES;
@@ -339,7 +336,7 @@ params   = _params;
         _webView.autoresizingMask = UIViewAutoresizingFlexibleWidth | UIViewAutoresizingFlexibleHeight;
         [self addSubview:_webView];
         
-        UIImage* closeImage = [UIImage imageNamed:@"modules/facebook/FacebookSDKResources.bundle/FBDialog/images/close.png"];
+        UIImage* closeImage = [UIImage imageNamed:@"FacebookSDKResources.bundle/FBDialog/images/close.png"];
         
         UIColor* color = [UIColor colorWithRed:167.0/255 green:184.0/255 blue:216.0/255 alpha:1];
         _closeButton = [[UIButton buttonWithType:UIButtonTypeCustom] retain];
@@ -405,7 +402,10 @@ params   = _params;
 
 // Display the dialog's WebView with a slick pop-up animation	
 - (void)showWebView {	
-	UIWindow* window = [[TiApp app] window];
+    UIWindow* window = [UIApplication sharedApplication].keyWindow;	
+    if (!window) {	
+        window = [[UIApplication sharedApplication].windows objectAtIndex:0];	
+    }	
     _modalBackgroundView.frame = window.frame;	
     [_modalBackgroundView addSubview:self];	
     [window addSubview:_modalBackgroundView];	
@@ -417,8 +417,9 @@ params   = _params;
     [UIView setAnimationDidStopSelector:@selector(bounce1AnimationStopped)];	
     self.transform = CGAffineTransformScale([self transformForOrientation], 1.1, 1.1);	
     [UIView commitAnimations];	
-    
-    [self dialogWillAppear];	
+  
+    _everShown = YES;
+    [self dialogWillAppear];
     [self addObservers];	
 }	
 
@@ -636,25 +637,39 @@ params   = _params;
 }
 
 - (void)dismissWithSuccess:(BOOL)success animated:(BOOL)animated {
-    if (success) {
-        if ([_delegate respondsToSelector:@selector(dialogDidComplete:)]) {
-            [_delegate dialogDidComplete:self];
-        }
-    } else {
-        if ([_delegate respondsToSelector:@selector(dialogDidNotComplete:)]) {
-            [_delegate dialogDidNotComplete:self];
-        }
-    }
+    // retain self for the life of this method, in case we are released by a client
+    id me = [self retain];
     
-    [self dismiss:animated];
+    @try {
+        if (success) {
+            if ([_delegate respondsToSelector:@selector(dialogDidComplete:)]) {
+                [_delegate dialogDidComplete:self];
+            }
+        } else {
+            if ([_delegate respondsToSelector:@selector(dialogDidNotComplete:)]) {
+                [_delegate dialogDidNotComplete:self];
+            }
+        }
+        
+        [self dismiss:animated];
+    } @finally {
+        [me release];
+    }
 }
 
 - (void)dismissWithError:(NSError*)error animated:(BOOL)animated {
-    if ([_delegate respondsToSelector:@selector(dialog:didFailWithError:)]) {
-        [_delegate dialog:self didFailWithError:error];
-    }
+    // retain self for the life of this method, in case we are released by a client
+    id me = [self retain];
     
-    [self dismiss:animated];
+    @try {
+        if ([_delegate respondsToSelector:@selector(dialog:didFailWithError:)]) {
+            [_delegate dialog:self didFailWithError:error];
+        }
+        
+        [self dismiss:animated];
+    } @finally {
+        [me release];
+    }
 }
 
 - (void)dialogWillAppear {
@@ -664,18 +679,33 @@ params   = _params;
 }
 
 - (void)dialogDidSucceed:(NSURL *)url {
+    // retain self for the life of this method, in case we are released by a client
+    id me = [self retain];
     
-    if ([_delegate respondsToSelector:@selector(dialogCompleteWithUrl:)]) {
-        [_delegate dialogCompleteWithUrl:url];
+    @try {
+        // call into client code
+        if ([_delegate respondsToSelector:@selector(dialogCompleteWithUrl:)]) {
+            [_delegate dialogCompleteWithUrl:url];
+        }
+        
+        [self dismissWithSuccess:YES animated:YES];
+    } @finally {
+        [me release];
     }
-    [self dismissWithSuccess:YES animated:YES];
 }
 
 - (void)dialogDidCancel:(NSURL *)url {
-    if ([_delegate respondsToSelector:@selector(dialogDidNotCompleteWithUrl:)]) {
-        [_delegate dialogDidNotCompleteWithUrl:url];
+    // retain self for the life of this method, in case we are released by a client
+    id me = [self retain];
+    
+    @try {
+        if ([_delegate respondsToSelector:@selector(dialogDidNotCompleteWithUrl:)]) {
+            [_delegate dialogDidNotCompleteWithUrl:url];
+        }
+        [self dismissWithSuccess:NO animated:YES];
+    } @finally {
+        [me release];
     }
-    [self dismissWithSuccess:NO animated:YES];
 }
 
 @end

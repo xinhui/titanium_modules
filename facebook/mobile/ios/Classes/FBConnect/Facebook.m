@@ -1,5 +1,5 @@
 /*
- * Copyright 2010 Facebook
+ * Copyright 2010-present Facebook.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -20,21 +20,11 @@
 #import "FBRequest.h"
 #import "FBError.h"
 #import "FBSessionManualTokenCachingStrategy.h"
-#import "FBSBJSON.h"
 #import "FBSession+Internal.h"
 #import "FBUtility.h"
-#import "TiUtils.h"
-extern NSString * const TI_APPLICATION_DEPLOYTYPE;
-#import <Social/Social.h>
-
 
 static NSString* kDialogBaseURL = @"https://m." FB_BASE_URL "/dialog/";
-static NSString* kGraphBaseURL = @"https://graph." FB_BASE_URL "/";
-static NSString* kRestserverBaseURL = @"https://api." FB_BASE_URL "/method/";
-
-static NSString* kFBAppAuthURLScheme = @"fbauth";
-static NSString* kFBAppAuthURLPath = @"authorize";
-NSString* kRedirectURL = @"fbconnect://success";
+static NSString* kRedirectURL = @"fbconnect://success";
 
 static NSString* kLogin = @"oauth";
 static NSString* kApprequests = @"apprequests";
@@ -57,6 +47,7 @@ static NSString *const FBexpirationDatePropertyName = @"expirationDate";
 @interface Facebook () <FBRequestDelegate>
 
 // private properties
+@property(nonatomic, copy) NSString* appId;
 // session and tokenCaching object implement login logic and token state in Facebook class
 @property(nonatomic, readwrite, retain) FBSession *session;
 @property(nonatomic) BOOL hasUpdatedAccessToken;
@@ -74,8 +65,6 @@ static NSString *const FBexpirationDatePropertyName = @"expirationDate";
             session = _session,
             hasUpdatedAccessToken = _hasUpdatedAccessToken,
             tokenCaching = _tokenCaching;
-
-@synthesize forceDialog;
 
 ///////////////////////////////////////////////////////////////////////////////////////////////////
 // private
@@ -118,8 +107,6 @@ static NSString *const FBexpirationDatePropertyName = @"expirationDate";
     
     self = [super init];
     if (self) {
-		appSupportsBackgrounding = ![TiUtils boolValue:@"UIApplicationExitsOnSuspend" properties:[[NSBundle mainBundle] infoDictionary] def:NO];
-
         _requests = [[NSMutableSet alloc] init];
         _lastAccessTokenUpdate = [[NSDate distantPast] retain];
         _frictionlessRequestSettings = [[FBFrictionlessRequestSettings alloc] init];
@@ -150,6 +137,9 @@ static NSString *const FBexpirationDatePropertyName = @"expirationDate";
     _requestExtendingAccessToken.delegate = nil;
 
     [_session release];
+    // remove KVOs for tokenCaching
+    [_tokenCaching removeObserver:self forKeyPath:FBaccessTokenPropertyName context:tokenContext];
+    [_tokenCaching removeObserver:self forKeyPath:FBexpirationDatePropertyName context:tokenContext];
     [_tokenCaching release];
 
     for (FBRequest* _request in _requests) {
@@ -255,7 +245,7 @@ static NSString *const FBexpirationDatePropertyName = @"expirationDate";
         self.hasUpdatedAccessToken = NO;
 
         // invalidate current session and create a new one with the same permissions
-        NSArray *permissions = self.session.permissions;
+        NSArray *permissions = self.session.accessTokenData.permissions;
         [self.session close];    
         self.session = [[[FBSession alloc] initWithAppID:_appId
                                              permissions:permissions
@@ -300,53 +290,24 @@ static NSString *const FBexpirationDatePropertyName = @"expirationDate";
  *            Callback interface for notifying the calling application when
  *            the user has logged in.
  */
-NSArray * noniOS6Permissions = nil;
-
 - (void)authorize:(NSArray *)permissions {
     
     // if we already have a session, git rid of it
     [self.session close];
     self.session = nil;
     [self.tokenCaching clearToken];
+    
     self.session = [[[FBSession alloc] initWithAppID:_appId
                                          permissions:permissions
                                      urlSchemeSuffix:_urlSchemeSuffix
                                   tokenCacheStrategy:self.tokenCaching]
                     autorelease];
     
-	FBSessionLoginBehavior behavior = FBSessionLoginBehaviorWithFallbackToWebView;
-	bool systemFBSDK = [SLComposeViewController class]!=nil;
-	if (forceDialog) {
-		behavior = FBSessionLoginBehaviorForcingWebView;
-		if (systemFBSDK && ![TI_APPLICATION_DEPLOYTYPE isEqualToString:@"production"]) {
-			NSLog(@"[INFO] Dialog authorization requested. If you would like to use the iOS Facebook support, facebook.forceDialogAuth MUST be false.");
-		}
-	} else if (systemFBSDK) {
-		behavior = FBSessionLoginBehaviorUseSystemAccountIfPresent;
-		if (noniOS6Permissions == nil) {
-			noniOS6Permissions = [[NSArray alloc] initWithObjects:@"offline_access",
-								  @"publish_actions",@"publish_stream",@"publish_checkins",
-								  @"ads_management",@"create_event",@"rsvp_event",
-								  @"manage_friendlists",@"manage_notifications",
-								  @"manage_pages", nil];
-		}
-		for (NSString * permission in permissions) {
-			if ([noniOS6Permissions containsObject:permission]) {
-				behavior = FBSessionLoginBehaviorWithFallbackToWebView;
-				if (![TI_APPLICATION_DEPLOYTYPE isEqualToString:@"production"]) {
-					NSLog(@"[INFO] Write permissions requested during authorization. If you would like to use the iOS Facebook support, facebook.permissions must contain readonly permissions, and use reauthorize for any write requests.");
-				}
-				break;
-			}
-		}
-	}
-	
-    [self.session openWithBehavior:(FBSessionLoginBehavior)behavior
-				 completionHandler:^(FBSession *session, FBSessionState status, NSError *error) {
+    [self.session openWithCompletionHandler:^(FBSession *session, FBSessionState status, NSError *error) {
         switch (status) {
             case FBSessionStateOpen:
                 // call the legacy session delegate
-                [self fbDialogLogin:session.accessToken expirationDate:session.expirationDate];
+                [self fbDialogLogin:session.accessTokenData.accessToken expirationDate:session.accessTokenData.expirationDate];
                 break;
             case FBSessionStateClosedLoginFailed:
                 { // prefer to keep decls near to their use
@@ -731,8 +692,7 @@ NSArray * noniOS6Permissions = nil;
             id fbid = [params objectForKey:@"to"];
             if (fbid != nil) {
                 // if value parses as a json array expression get the list that way
-                FBSBJsonParser *parser = [[[FBSBJsonParser alloc] init] autorelease];
-                id fbids = [parser objectWithString:fbid];
+                id fbids = [FBUtility simpleJSONDecode:fbid];
                 if (![fbids isKindOfClass:[NSArray class]]) {
                     // otherwise seperate by commas (handles the singleton case too)
                     fbids = [fbid componentsSeparatedByString:@","];

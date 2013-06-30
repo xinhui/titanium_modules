@@ -1,5 +1,5 @@
 /*
- * Copyright 2010 Facebook
+ * Copyright 2010-present Facebook.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -53,8 +53,6 @@
     FBRequest *_requestExtendingAccessToken;
     NSDate* _lastAccessTokenUpdate;
     FBFrictionlessRequestSettings* _frictionlessRequestSettings;
-  BOOL appSupportsBackgrounding;
-	BOOL forceDialog;
 }
 
 @property(nonatomic, copy) NSString* accessToken;
@@ -63,11 +61,6 @@
 @property(nonatomic, copy) NSString* urlSchemeSuffix;
 @property(nonatomic, readonly) BOOL isFrictionlessRequestsEnabled;
 @property(nonatomic, readonly, retain) FBSession *session;
-
-//Properties added to restore older functionality in the new facebook API:
-//We can now add appIds after the fact, and force a dialog to open
-@property(nonatomic, copy) NSString* appId;
-@property(nonatomic, assign) BOOL forceDialog;
 
 - (id)initWithAppId:(NSString *)appId
         andDelegate:(id<FBSessionDelegate>)delegate;
@@ -286,5 +279,3 @@ enum {
 @end
 
 
-
-extern NSString* kRedirectURL;

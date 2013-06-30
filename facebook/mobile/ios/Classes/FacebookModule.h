@@ -5,7 +5,7 @@
  */
 
 #import "TiModule.h"
-#import "Facebook.h"
+#import "FacebookSDK.h"
 
 @protocol TiFacebookStateListener
 @required
@@ -14,19 +14,15 @@
 @end
 
 
-@interface FacebookModule : TiModule <FBRequestDelegate, FBDialogDelegate, FBSessionDelegate>
+@interface FacebookModule : TiModule
 {
-	Facebook *facebook;
 	BOOL loggedIn;
 	NSString *uid;
 	NSString *url;
-	NSString *appid;
 	NSArray *permissions;
 	NSMutableArray *stateListeners;
-    BOOL forceDialogAuth;
 }
 
-@property(nonatomic,readonly) Facebook *facebook;
 @property(nonatomic,readonly) NSNumber *BUTTON_STYLE_NORMAL;
 @property(nonatomic,readonly) NSNumber *BUTTON_STYLE_WIDE;
 
@@ -35,7 +31,6 @@
 -(void)removeListener:(id<TiFacebookStateListener>)listener;
 
 -(void)authorize:(id)args;
--(void)reauthorize:(id)args;
 -(void)logout:(id)args;
 
 

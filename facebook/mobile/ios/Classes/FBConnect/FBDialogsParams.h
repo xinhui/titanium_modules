@@ -1,5 +1,5 @@
 /*
- * Copyright 2012 Facebook
+ * Copyright 2010-present Facebook.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -16,14 +16,13 @@
 
 #import <Foundation/Foundation.h>
 
-@interface FBContentLink : NSObject
-
-@property (readonly, copy) NSURL *targetURL;
-@property (readonly, copy) NSArray *actionTypes;
-@property (readonly, copy) NSString *source;
-@property (readonly, copy) NSArray *ref;
-@property (readonly, copy) NSDictionary *originalQueryParameters;
-
-- (id)initWithURL:(NSURL*)url;
+/*!
+ @class FBDialogsParams
+ 
+ @abstract
+ This object is used as a base class for parameters passed to native dialogs that
+ open in the Facebook app.
+ */
+@interface FBDialogsParams : NSObject
 
 @end
