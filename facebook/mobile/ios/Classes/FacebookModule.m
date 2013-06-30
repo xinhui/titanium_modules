@@ -62,20 +62,20 @@ FBSession *mySession;
 
 -(void)resumed:(id)note
 {
-	NSLog(@"[DEBUG] facebook resumed");
+	VerboseLog(@"[DEBUG] facebook resumed");
 	
 	[self handleRelaunch];
 }
 
 -(void)activateApp:(NSNotification *)notification
 {
-    NSLog(@"[DEBUG] activateApp notification");
+    VerboseLog(@"[DEBUG] activateApp notification");
     [FBSession.activeSession handleDidBecomeActive];
 }
 
 -(void)startup
 {
-	NSLog(@"[DEBUG] facebook startup");
+	VerboseLog(@"[DEBUG] facebook startup");
 	[super startup];
 	TiThreadPerformOnMainThread(^{
 		NSNotificationCenter * nc = [NSNotificationCenter defaultCenter];
@@ -93,7 +93,7 @@ FBSession *mySession;
 
 -(void)shutdown:(id)sender
 {
-	NSLog(@"[DEBUG] facebook shutdown");
+	VerboseLog(@"[DEBUG] facebook shutdown");
 	
 	[[NSNotificationCenter defaultCenter] removeObserver:self];
 	[super shutdown:sender];
@@ -122,7 +122,7 @@ FBSession *mySession;
                      // Error on /me call
                      // In a future rev perhaps use stored user info
                      // But for now bail out
-                     NSLog(@"/me graph call error");
+                     VerboseLog(@"/me graph call error");
                      if (error.fberrorCategory != FBErrorCategoryAuthenticationReopenSession) {
                          // Session errors will be handled by sessionStateChanged, not here
                          RELEASE_TO_NIL(uid);
@@ -144,7 +144,7 @@ FBSession *mySession;
                       error:(NSError *)error
 {
     if (error) {
-        NSLog(@"sessionStateChanged error");
+        VerboseLog(@"sessionStateChanged error");
         RELEASE_TO_NIL(uid);
         loggedIn = NO;
         [self fireLoginChange];
@@ -153,12 +153,12 @@ FBSession *mySession;
     } else {
         switch (state) {
             case FBSessionStateOpen:
-                NSLog(@"[DEBUG] FBSessionStateOpen");
+                VerboseLog(@"[DEBUG] FBSessionStateOpen");
                 [self populateUserDetails];
                  break;
             case FBSessionStateClosed:
             case FBSessionStateClosedLoginFailed:
-                NSLog(@"[DEBUG] facebook session closed");
+                VerboseLog(@"[DEBUG] facebook session closed");
                 [FBSession.activeSession closeAndClearTokenInformation];
                 
                 loggedIn = NO;
@@ -273,7 +273,6 @@ FBSession *mySession;
  *    alert('logged out');
  * });
  *
- * facebook.appid = 'my_appid';
  * facebook.permissions = ['publish_stream'];
  * facebook.authorize();
  *
@@ -281,7 +280,7 @@ FBSession *mySession;
 
 -(void)authorize:(id)args
 {
-	NSLog(@"[DEBUG] facebook authorize");
+	VerboseLog(@"[DEBUG] facebook authorize");
 	
 //	if ([self isLoggedIn])
 //	{
@@ -310,7 +309,7 @@ FBSession *mySession;
  */
 -(void)logout:(id)args
 {
-	NSLog(@"[DEBUG] facebook logout");
+	VerboseLog(@"[DEBUG] facebook logout");
 	if ([self isLoggedIn])
 	{
         TiThreadPerformOnMainThread(^{[FBSession.activeSession closeAndClearTokenInformation];}, NO);
