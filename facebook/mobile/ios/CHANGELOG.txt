@@ -1,1 +1,1 @@
-Place your change log text here.  This file will be incorporated with your app at package time.
+6/30/2013 - initial version with Facebook iOS SDK 3.5.3 
