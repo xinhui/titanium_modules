@@ -112,8 +112,8 @@ FBSession *mySession;
             mySession = FBSession.activeSession;
             [[FBRequest requestForMe] startWithCompletionHandler:
              ^(FBRequestConnection *connection, NSDictionary<FBGraphUser> *user, NSError *error) {
+                 RELEASE_TO_NIL(uid);
                  if (!error) {
-                     RELEASE_TO_NIL(uid);
                      uid = [[user objectForKey:@"id"] copy];
                      loggedIn = YES;
                      [self fireLoginChange];
@@ -125,7 +125,6 @@ FBSession *mySession;
                      VerboseLog(@"/me graph call error");
                      if (error.fberrorCategory != FBErrorCategoryAuthenticationReopenSession) {
                          // Session errors will be handled by sessionStateChanged, not here
-                         RELEASE_TO_NIL(uid);
                          TiThreadPerformOnMainThread(^{
                              [FBSession.activeSession closeAndClearTokenInformation];
                          }, YES);
@@ -143,9 +142,9 @@ FBSession *mySession;
                       state:(FBSessionState) state
                       error:(NSError *)error
 {
+    RELEASE_TO_NIL(uid);
     if (error) {
         VerboseLog(@"sessionStateChanged error");
-        RELEASE_TO_NIL(uid);
         loggedIn = NO;
         [self fireLoginChange];
         BOOL userCancelled = error.fberrorCategory == FBErrorCategoryUserCancelled;
@@ -159,7 +158,9 @@ FBSession *mySession;
             case FBSessionStateClosed:
             case FBSessionStateClosedLoginFailed:
                 VerboseLog(@"[DEBUG] facebook session closed");
-                [FBSession.activeSession closeAndClearTokenInformation];
+                TiThreadPerformOnMainThread(^{
+                    [FBSession.activeSession closeAndClearTokenInformation];
+                }, YES);
                 
                 loggedIn = NO;
                 [self fireLoginChange];
@@ -312,7 +313,10 @@ FBSession *mySession;
 	VerboseLog(@"[DEBUG] facebook logout");
 	if ([self isLoggedIn])
 	{
-        TiThreadPerformOnMainThread(^{[FBSession.activeSession closeAndClearTokenInformation];}, NO);
+        RELEASE_TO_NIL(uid);
+        TiThreadPerformOnMainThread(^{
+            [FBSession.activeSession closeAndClearTokenInformation];
+        }, NO);
 	}
 }
 
